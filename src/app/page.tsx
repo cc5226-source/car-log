@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function Home() {
   const [loading, setLoading] = useState(false);
@@ -13,12 +13,23 @@ export default function Home() {
     user: '',
     destination: '',
     purpose: '',
-    time: '',
+    startTime: '',
+    endTime: '',
     endMileage: '',
   });
 
+  // 컴포넌트 마운트 시 로컬 스토리지에서 마지막 사용자 불러오기
+  useEffect(() => {
+    const savedUser = localStorage.getItem('carLogSavedUser');
+    if (savedUser) {
+      setFormData(prev => ({ ...prev, user: savedUser }));
+    }
+  }, []);
+
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedDate = e.target.value;
+    if (!selectedDate) return;
+    
     const dateObj = new Date(selectedDate);
     const days = ['일', '월', '화', '수', '목', '금', '토'];
     const dayName = days[dateObj.getDay()] || '';
@@ -39,6 +50,17 @@ export default function Home() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // 시간 포맷팅 함수 (예: 1300 -> 13:00, 930 -> 09:30)
+  const formatTimeStr = (timeStr: string) => {
+    const digits = timeStr.replace(/[^0-9]/g, '');
+    if (digits.length === 3) {
+      return `0${digits[0]}:${digits.slice(1)}`;
+    } else if (digits.length === 4) {
+      return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+    }
+    return timeStr; 
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -46,10 +68,29 @@ export default function Home() {
     setSuccess(false);
 
     try {
+      // 로컬 스토리지에 사용자 이름 저장
+      localStorage.setItem('carLogSavedUser', formData.user);
+
+      // 시간 자동 포맷팅 결합
+      const formattedStartTime = formatTimeStr(formData.startTime);
+      const formattedEndTime = formatTimeStr(formData.endTime);
+      const combinedTime = `${formattedStartTime}~${formattedEndTime}`;
+
+      // API 전송용 페이로드
+      const payload = {
+        date: formData.date,
+        day: formData.day,
+        user: formData.user,
+        destination: formData.destination,
+        purpose: formData.purpose,
+        time: combinedTime, // 포맷팅된 시간 합치기
+        endMileage: formData.endMileage,
+      };
+
       const response = await fetch('/api/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -57,15 +98,18 @@ export default function Home() {
       }
 
       setSuccess(true);
-      setFormData({
+      
+      // 폼 초기화 (사용자 이름은 유지)
+      setFormData(prev => ({
+        ...prev,
         date: '',
         day: '',
-        user: '',
         destination: '',
         purpose: '',
-        time: '',
+        startTime: '',
+        endTime: '',
         endMileage: '',
-      });
+      }));
       (e.target as HTMLFormElement).reset();
       
     } catch (err) {
@@ -159,17 +203,35 @@ export default function Home() {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">운행시간</label>
-            <input
-              type="text"
-              name="time"
-              value={formData.time}
-              onChange={handleChange}
-              required
-              placeholder="예: 13:00~15:30"
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">시작 시간</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                name="startTime"
+                value={formData.startTime}
+                onChange={handleChange}
+                required
+                placeholder="예: 1300"
+                maxLength={4}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">종료 시간</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                name="endTime"
+                value={formData.endTime}
+                onChange={handleChange}
+                required
+                placeholder="예: 1530"
+                maxLength={4}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+              />
+            </div>
           </div>
 
           <div>
