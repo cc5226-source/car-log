@@ -14,18 +14,15 @@ export default function Home() {
     destination: '',
     purpose: '',
     time: '',
-    startMileage: '',
     endMileage: '',
   });
 
-  // 날짜 선택 시 요일 자동 계산
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedDate = e.target.value;
     const dateObj = new Date(selectedDate);
     const days = ['일', '월', '화', '수', '목', '금', '토'];
     const dayName = days[dateObj.getDay()] || '';
 
-    // "02월 03일" 형식으로 변환
     const formattedDate = dateObj.toLocaleDateString('ko-KR', {
       month: '2-digit',
       day: '2-digit',
@@ -35,7 +32,6 @@ export default function Home() {
       ...formData,
       date: formattedDate,
       day: dayName,
-      // 내부적으로는 yyyy-mm-dd 도 저장할 수 있지만, 요구사항의 양식에 맞춤
     });
   };
 
@@ -61,7 +57,6 @@ export default function Home() {
       }
 
       setSuccess(true);
-      // 폼 초기화
       setFormData({
         date: '',
         day: '',
@@ -69,10 +64,8 @@ export default function Home() {
         destination: '',
         purpose: '',
         time: '',
-        startMileage: '',
         endMileage: '',
       });
-      // 날짜 input 도 초기화해야 하므로 form 리셋
       (e.target as HTMLFormElement).reset();
       
     } catch (err) {
@@ -179,31 +172,17 @@ export default function Home() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">주행 전 키로수</label>
-              <input
-                type="number"
-                name="startMileage"
-                value={formData.startMileage}
-                onChange={handleChange}
-                required
-                placeholder="숫자만 입력"
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">주행 후 키로수</label>
-              <input
-                type="number"
-                name="endMileage"
-                value={formData.endMileage}
-                onChange={handleChange}
-                required
-                placeholder="숫자만 입력"
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">운행 후 키로수</label>
+            <input
+              type="number"
+              name="endMileage"
+              value={formData.endMileage}
+              onChange={handleChange}
+              required
+              placeholder="운행 종료 후 총 키로수를 입력하세요"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-lg font-bold"
+            />
           </div>
 
           <div className="pt-4">

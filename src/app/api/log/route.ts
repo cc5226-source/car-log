@@ -12,12 +12,8 @@ export async function POST(request: Request) {
       destination,
       purpose,
       time,
-      startMileage,
       endMileage,
     } = body;
-
-    // 주행거리 자동 계산
-    const distance = Number(endMileage) - Number(startMileage);
 
     const { GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY, SPREADSHEET_ID } = process.env;
     
@@ -36,21 +32,58 @@ export async function POST(request: Request) {
     await doc.loadInfo();
     const sheet = doc.sheetsByIndex[0];
 
-    // 헤더가 7행에 있으므로 데이터를 배열 형태로 바로 밀어넣습니다.
-    // 주의: 시트의 J열(확인란)에 미리 체크박스가 빈칸까지 쫙 깔려있으면 그 아래(27행 등)부터 입력될 수 있습니다.
-    // 빈 셀에는 체크박스를 지워두시는 것이 좋습니다. (전체 열에 데이터 확인 규칙만 걸어두면 됩니다)
-    await sheet.addRow([
-      date,          // A열: 사용일자
-      day,           // B열: 요일
-      user,          // C열: 사용자
-      destination,   // D열: 행선지
-      purpose,       // E열: 운행목적
-      time,          // F열: 운행시간
-      startMileage,  // G열: 주행전키로수
-      endMileage,    // H열: 주행후키로수
-      distance,      // I열: 주행거리 (자동계산)
-      ""             // J열: 확인 (빈칸)
-    ]);
+    // 시트의 전체 행 수를 기반으로 셀 데이터를 불러옵니다. (안전하게 A8부터)
+    const maxRows = sheet.rowCount;
+    await sheet.loadCells(`A8:I${maxRows}`);
+
+    let targetRowIndex = -1;
+    let previousEndMileage = 0;
+
+    // A열(사용일자)이 비어있는 첫 번째 행을 찾습니다.
+    for (let r = 7; r < maxRows; r++) { // 0-indexed (7 = row 8)
+      const dateCell = sheet.getCell(r, 0); // A열
+      if (!dateCell.value) {
+        targetRowIndex = r;
+        
+        // 이전 행이 존재한다면 (8행 초과), 이전 행의 주행후키로수(H열, index 7)를 가져옵니다.
+        if (r > 7) {
+          const prevEndMileageCell = sheet.getCell(r - 1, 7);
+          previousEndMileage = Number(prevEndMileageCell.value) || 0;
+        }
+        break;
+      }
+    }
+
+    if (targetRowIndex === -1) {
+       return NextResponse.json({ error: 'Sheet is full' }, { status: 500 });
+    }
+
+    // 이번 운행의 주행전키로수 설정
+    let startMileageForThisTrip = previousEndMileage;
+    
+    // 만약 완전히 첫 번째 기록(8행)이라면,
+    if (targetRowIndex === 7) {
+      const existingStartCell = sheet.getCell(7, 6); // G8 셀
+      // G8 셀에 사용자가 미리 적어둔 값이 있다면 그것을 사용하고, 없다면 0으로 시작
+      startMileageForThisTrip = Number(existingStartCell.value) || 0;
+    }
+
+    const currentEndMileage = Number(endMileage);
+    const distance = currentEndMileage - startMileageForThisTrip;
+
+    // 데이터 쓰기
+    sheet.getCell(targetRowIndex, 0).value = date;
+    sheet.getCell(targetRowIndex, 1).value = day;
+    sheet.getCell(targetRowIndex, 2).value = user;
+    sheet.getCell(targetRowIndex, 3).value = destination;
+    sheet.getCell(targetRowIndex, 4).value = purpose;
+    sheet.getCell(targetRowIndex, 5).value = time;
+    sheet.getCell(targetRowIndex, 6).value = startMileageForThisTrip; // 계산된 주행전 키로수
+    sheet.getCell(targetRowIndex, 7).value = currentEndMileage;       // 입력받은 주행후 키로수
+    sheet.getCell(targetRowIndex, 8).value = distance;                // 계산된 주행거리
+
+    // 한 번에 저장
+    await sheet.saveUpdatedCells();
 
     return NextResponse.json({ success: true });
   } catch (error) {
