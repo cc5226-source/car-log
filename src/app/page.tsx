@@ -183,8 +183,8 @@ export default function Home() {
             <div className="text-xs font-semibold text-indigo-400 mb-1">최근 차량 상태</div>
             <div className="flex justify-between items-end">
               <div>
-                <div className="text-sm text-indigo-900">마지막 주차: <span className="font-bold">{lastLog.destination}</span></div>
-                <div className="text-sm text-indigo-900">최종 키로수: <span className="font-bold">{lastLog.endMileage}km</span></div>
+                <div className="text-sm text-indigo-900">마지막 행선지/사용자: <span className="font-bold">{lastLog.destination} / {lastLog.user}</span></div>
+                <div className="text-sm text-indigo-900">최종 키로수: <span className="font-bold">{String(lastLog.endMileage).replace(/km/i, '').trim()}km</span></div>
               </div>
               <div className="text-xs text-indigo-400">{lastLog.date} 기록됨</div>
             </div>

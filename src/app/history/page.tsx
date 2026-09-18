@@ -105,7 +105,7 @@ export default function HistoryPage() {
                   
                   <div className="text-gray-500 mt-2">키로수:</div>
                   <div className="font-medium mt-2 text-blue-600">
-                    {log.startMileage}km ➔ {log.endMileage}km ({log.distance}km)
+                    {String(log.startMileage).replace(/km/i, '').trim()}km ➔ {String(log.endMileage).replace(/km/i, '').trim()}km ({String(log.distance).replace(/km/i, '').trim()}km)
                   </div>
                 </div>
               </div>
