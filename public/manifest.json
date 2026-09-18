@@ -1,0 +1,16 @@
+{
+  "name": "공용차량 운행일지",
+  "short_name": "운행일지",
+  "description": "공용차량 운행일지 모바일 앱",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/globe.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}
