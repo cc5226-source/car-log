@@ -2,50 +2,72 @@ import { NextResponse } from 'next/server';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
 
+// 공통 인증 및 시트 로드 함수
+async function getSheet() {
+  const { GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY, SPREADSHEET_ID } = process.env;
+  if (!GOOGLE_SERVICE_ACCOUNT_EMAIL || !GOOGLE_PRIVATE_KEY || !SPREADSHEET_ID) {
+    throw new Error("Missing Google Sheets credentials");
+  }
+
+  const serviceAccountAuth = new JWT({
+    email: GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    key: GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+
+  const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
+  await doc.loadInfo();
+  return doc.sheetsByIndex[0];
+}
+
+// 전체 로그 조회 (최근 기록을 위해)
+export async function GET() {
+  try {
+    const sheet = await getSheet();
+    await sheet.loadHeaderRow(7); // 7행이 헤더 (사용일자, 요일 등)
+    const rows = await sheet.getRows();
+    
+    // 데이터가 있는 행만 필터링 후 매핑
+    const logs = rows
+      .filter(r => r.get('사용일자'))
+      .map(r => ({
+        rowIndex: r.rowNumber,
+        date: r.get('사용일자'),
+        day: r.get('요일'),
+        user: r.get('사용자'),
+        destination: r.get('행선지'),
+        purpose: r.get('운행목적'),
+        time: r.get('운행시간'),
+        startMileage: r.get('주행전키로수'),
+        endMileage: r.get('주행후키로수'),
+        distance: r.get('주행거리')
+      }));
+      
+    // 최신 기록이 위로 오게 뒤집기
+    return NextResponse.json({ logs: logs.reverse() });
+  } catch (error) {
+    console.error('GET Error:', error);
+    return NextResponse.json({ error: 'Failed to fetch logs' }, { status: 500 });
+  }
+}
+
+// 새로운 로그 추가
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const {
-      date,
-      day,
-      user,
-      destination,
-      purpose,
-      time,
-      endMileage,
-    } = body;
+    const { date, day, user, destination, purpose, time, endMileage } = body;
+    const sheet = await getSheet();
 
-    const { GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY, SPREADSHEET_ID } = process.env;
-    
-    if (!GOOGLE_SERVICE_ACCOUNT_EMAIL || !GOOGLE_PRIVATE_KEY || !SPREADSHEET_ID) {
-      console.error("Missing Google Sheets credentials");
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-    }
-
-    const serviceAccountAuth = new JWT({
-      email: GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      key: GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-
-    const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
-    await doc.loadInfo();
-    const sheet = doc.sheetsByIndex[0];
-
-    // 시트의 전체 행 수를 기반으로 셀 데이터를 불러옵니다. (B8부터 K열까지)
     const maxRows = sheet.rowCount;
     await sheet.loadCells(`B8:K${maxRows}`);
 
     let targetRowIndex = -1;
     let previousEndMileage = 0;
 
-    // B열(사용일자, index 1)이 비어있는 첫 번째 행을 찾습니다.
-    for (let r = 7; r < maxRows; r++) { // 0-indexed (7 = row 8)
-      const dateCell = sheet.getCell(r, 1); // B열
+    for (let r = 7; r < maxRows; r++) { 
+      const dateCell = sheet.getCell(r, 1); 
       if (!dateCell.value) {
         targetRowIndex = r;
-        
-        // 이전 행이 존재한다면 (8행 초과), 이전 행의 주행후키로수(I열, index 8)를 가져옵니다.
         if (r > 7) {
           const prevEndMileageCell = sheet.getCell(r - 1, 8);
           previousEndMileage = Number(prevEndMileageCell.value) || 0;
@@ -58,36 +80,56 @@ export async function POST(request: Request) {
        return NextResponse.json({ error: 'Sheet is full' }, { status: 500 });
     }
 
-    // 이번 운행의 주행전키로수 설정
     let startMileageForThisTrip = previousEndMileage;
-    
-    // 만약 완전히 첫 번째 기록(8행)이라면,
     if (targetRowIndex === 7) {
-      const existingStartCell = sheet.getCell(7, 7); // H8 셀 (주행전키로수)
-      // H8 셀에 사용자가 미리 적어둔 값이 있다면 그것을 사용하고, 없다면 0으로 시작
+      const existingStartCell = sheet.getCell(7, 7); 
       startMileageForThisTrip = Number(existingStartCell.value) || 0;
     }
 
     const currentEndMileage = Number(endMileage);
     const distance = currentEndMileage - startMileageForThisTrip;
 
-    // 데이터 쓰기 (index가 하나씩 밀렸으므로 +1)
-    sheet.getCell(targetRowIndex, 1).value = date;             // B열: 사용일자
-    sheet.getCell(targetRowIndex, 2).value = day;              // C열: 요일
-    sheet.getCell(targetRowIndex, 3).value = user;             // D열: 사용자
-    sheet.getCell(targetRowIndex, 4).value = destination;      // E열: 행선지
-    sheet.getCell(targetRowIndex, 5).value = purpose;          // F열: 운행목적
-    sheet.getCell(targetRowIndex, 6).value = time;             // G열: 운행시간
-    sheet.getCell(targetRowIndex, 7).value = startMileageForThisTrip; // H열: 주행전키로수
-    sheet.getCell(targetRowIndex, 8).value = currentEndMileage;       // I열: 주행후키로수
-    sheet.getCell(targetRowIndex, 9).value = distance;                // J열: 주행거리
+    sheet.getCell(targetRowIndex, 1).value = date;             
+    sheet.getCell(targetRowIndex, 2).value = day;              
+    sheet.getCell(targetRowIndex, 3).value = user;             
+    sheet.getCell(targetRowIndex, 4).value = destination;      
+    sheet.getCell(targetRowIndex, 5).value = purpose;          
+    sheet.getCell(targetRowIndex, 6).value = time;             
+    sheet.getCell(targetRowIndex, 7).value = startMileageForThisTrip; 
+    sheet.getCell(targetRowIndex, 8).value = currentEndMileage;       
+    sheet.getCell(targetRowIndex, 9).value = distance;                
 
-    // 한 번에 저장
     await sheet.saveUpdatedCells();
-
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('API Error:', error);
     return NextResponse.json({ error: 'Failed to save data' }, { status: 500 });
+  }
+}
+
+// 로그 삭제 (해당 행 완전 삭제 및 위로 당기기)
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const rowIndex = parseInt(searchParams.get('rowIndex') || '0');
+    
+    if (rowIndex < 8) return NextResponse.json({ error: 'Invalid row' }, { status: 400 });
+
+    const sheet = await getSheet();
+    await sheet.loadHeaderRow(7);
+    const rows = await sheet.getRows();
+    
+    // 삭제할 행 객체 찾기
+    const rowToDelete = rows.find(r => r.rowNumber === rowIndex);
+    
+    if (rowToDelete) {
+      await rowToDelete.delete();
+      return NextResponse.json({ success: true });
+    } else {
+      return NextResponse.json({ error: 'Row not found' }, { status: 404 });
+    }
+  } catch (error) {
+    console.error('DELETE Error:', error);
+    return NextResponse.json({ error: 'Failed to delete row' }, { status: 500 });
   }
 }
